@@ -2,33 +2,37 @@ import os
 import smtplib
 import ssl
 from email.message import EmailMessage
-from urllib.parse import quote
+from email.utils import formataddr, parseaddr
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import HTTPException
+from app.services.email_template import LOGO_PATH, render_reset_email, reset_plain_text
 
 
 def mail_configured():
     return bool(os.getenv('SMTP_HOST') and os.getenv('SMTP_FROM') and os.getenv('RESET_URL'))
 
 
-def send_reset(address, token):
+def build_reset_message(address, token):
     if not mail_configured():
         raise HTTPException(503, 'El servicio de recuperación por correo no está disponible.')
     message = EmailMessage()
-    message['Subject'] = 'Restablecimiento de contraseña — SIESAS'
-    message['From'] = os.environ['SMTP_FROM']
+    message['Subject'] = 'Recupera tu acceso a SIESAS'
+    display, sender = parseaddr(os.environ['SMTP_FROM'])
+    message['From'] = formataddr((display or os.getenv('SMTP_FROM_NAME', 'SIESAS · Gobierno de Nuevo León'), sender))
     message['To'] = address
-    base = os.environ['RESET_URL']
-    link = base + ('&' if '?' in base else '?') + 'reset_token=' + quote(token)
-    message.set_content(f'''Estimada persona usuaria:
+    base = urlsplit(os.environ['RESET_URL'])
+    params = [(key, value) for key, value in parse_qsl(base.query) if key != 'reset_token']
+    params.append(('reset_token', token))
+    link = urlunsplit(base._replace(query=urlencode(params)))
+    message.set_content(reset_plain_text(link))
+    message.add_alternative(render_reset_email(link), subtype='html')
+    message.get_payload()[-1].add_related(LOGO_PATH.read_bytes(), maintype='image', subtype='png', cid='<siesas-logo>', disposition='inline', filename='siesas-nuevo-leon.png')
+    return message
 
-Recibimos una solicitud para restablecer la contraseña de su cuenta.
-Utilice este enlace dentro de los próximos 30 minutos:
-{link}
 
-Si no realizó esta solicitud, ignore este mensaje.
-
-Equipo SIESAS''')
+def send_reset(address, token):
+    message = build_reset_message(address, token)
     secure = os.getenv('SMTP_SSL', 'false').lower() == 'true'
     client = smtplib.SMTP_SSL if secure else smtplib.SMTP
     kwargs = {'timeout': 15}

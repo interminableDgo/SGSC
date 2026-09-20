@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db, SessionLocal
 from app.schemas.auth import EmailInput, LoginInput, RegisterInput, ResetInput, VerifyInput
 from app.security import (authorized_user, cipher, current_user, digest, hasher,
-    issue_token, limit_request, now, public_user, verify_password, bearer)
+    issue_token, limit_request, lock_token, now, public_user, verify_password, bearer)
 from app.services.auth_service import mail_configured, send_reset
 
 router = APIRouter(prefix='/auth', tags=['Autenticación'])
@@ -19,7 +19,7 @@ GENERIC = {'message': 'Si el correo está asociado a una cuenta autorizada, reci
 @router.post('/login')
 def login(data: LoginInput, request: Request, db: Session = Depends(get_db)):
     limit_request(db, request, 'login', str(data.correo))
-    record = db.execute(text('SELECT usuario_id, password_hash FROM usuario WHERE correo=:email'), {'email': str(data.correo)}).mappings().first()
+    record = db.execute(text('SELECT usuario_id, password_hash FROM usuario WHERE correo=:email FOR UPDATE'), {'email': str(data.correo)}).mappings().first()
     valid = verify_password(record['password_hash'] if record else None, data.password)
     user = authorized_user(db, record['usuario_id']) if record and valid else None
     if not user:
@@ -35,8 +35,7 @@ def login(data: LoginInput, request: Request, db: Session = Depends(get_db)):
 @router.post('/verify')
 def verify(data: VerifyInput, request: Request, db: Session = Depends(get_db)):
     limit_request(db, request, 'verify', digest(data.token))
-    token = db.execute(text('''SELECT * FROM ejecutivo_token WHERE token_hash=:token
-      AND tipo='challenge' AND usado IS NULL AND expira>:now FOR UPDATE'''), {'token': digest(data.token), 'now': now()}).mappings().first()
+    token = lock_token(db, data.token, 'challenge')
     user = authorized_user(db, token['usuario_id']) if token else None
     if not user or not user['totp_secret']:
         raise HTTPException(400, 'Verificación vencida. Vuelve a iniciar sesión.')
@@ -97,8 +96,7 @@ def forgot(data: EmailInput, request: Request, tasks: BackgroundTasks, db: Sessi
 
 @router.post('/reset-password')
 def reset(data: ResetInput, db: Session = Depends(get_db)):
-    token = db.execute(text('''SELECT * FROM ejecutivo_token WHERE token_hash=:token
-      AND tipo='reset' AND usado IS NULL AND expira>:now FOR UPDATE'''), {'token': digest(data.token), 'now': now()}).mappings().first()
+    token = lock_token(db, data.token, 'reset')
     if not token or not authorized_user(db, token['usuario_id']):
         raise HTTPException(400, 'El enlace no es válido o ya venció. Solicita uno nuevo.')
     db.execute(text('UPDATE usuario SET password_hash=:hash WHERE usuario_id=:uid'), {'hash': hasher.hash(data.password), 'uid': token['usuario_id']})

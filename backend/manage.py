@@ -48,6 +48,23 @@ def provision(args):
     print('Cuenta ejecutiva autorizada.')
 
 
+def setup_2fa(args):
+    import pyotp
+    from app.security import cipher
+    with engine.begin() as db:
+        uid=db.execute(text('SELECT usuario_id FROM usuario WHERE correo=:email AND activo=1'),{'email':args.correo}).scalar_one()
+        current=db.execute(text('SELECT totp_secret FROM ejecutivo_acceso WHERE usuario_id=:uid'),{'uid':uid}).scalar_one()
+        if current:
+            raise SystemExit('La cuenta ya tiene verificación en dos pasos. No se modificó.')
+        totp=pyotp.TOTP(pyotp.random_base32())
+        print('Agrega esta clave en tu aplicación de autenticación:',totp.secret)
+        code=getpass.getpass('Escribe el código de 6 dígitos para confirmar la vinculación: ')
+        if not totp.verify(code,valid_window=1):
+            raise SystemExit('Código incorrecto. No se activó la verificación.')
+        db.execute(text('UPDATE ejecutivo_acceso SET totp_secret=:s WHERE usuario_id=:uid'),{'s':cipher().encrypt(totp.secret.encode()).decode(),'uid':uid})
+    print('Verificación en dos pasos activada.')
+
+
 if __name__=='__main__':
     parser=argparse.ArgumentParser()
     sub=parser.add_subparsers(dest='command',required=True)
@@ -57,7 +74,10 @@ if __name__=='__main__':
     for key in ['correo','nombres','apellidos']:
         account.add_argument('--'+key,required=True)
     account.add_argument('--entidad',default='19',help='Clave INEGI del estado autorizado')
+    second_factor=sub.add_parser('setup-2fa')
+    second_factor.add_argument('--correo',required=True)
     args=parser.parse_args()
     if args.command=='migrate': migrate()
     elif args.command=='seed-wireframe': seed()
+    elif args.command=='setup-2fa': setup_2fa(args)
     else: provision(args)

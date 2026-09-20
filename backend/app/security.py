@@ -69,6 +69,18 @@ def issue_token(db, user_id, kind, minutes):
     return raw
 
 
+def lock_token(db, raw, kind):
+    """Use the same user -> token lock order as password changes and issuance."""
+    key = digest(raw)
+    uid = db.execute(text('SELECT usuario_id FROM ejecutivo_token WHERE token_hash=:key'), {'key': key}).scalar()
+    if uid is None:
+        return None
+    db.execute(text('SELECT usuario_id FROM usuario WHERE usuario_id=:uid FOR UPDATE'), {'uid': uid})
+    return db.execute(text('''SELECT * FROM ejecutivo_token WHERE token_hash=:key
+      AND tipo=:kind AND usado IS NULL AND expira>:now FOR UPDATE'''),
+      {'key': key, 'kind': kind, 'now': now()}).mappings().first()
+
+
 USER_SQL = '''SELECT u.usuario_id, u.nombres, u.apellidos, u.correo,
  a.entidad_id, e.nombre AS entidad, e.clave_inegi, a.totp_secret, a.totp_last_step
  FROM usuario u JOIN ejecutivo_acceso a ON a.usuario_id=u.usuario_id

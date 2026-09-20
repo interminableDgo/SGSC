@@ -148,11 +148,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       }
       if (mounted) setState(() => message = 'Reporte generado.');
     } catch (e) {
-      if (mounted)
+      if (mounted) {
         setState(
           () => message =
               'No se pudo exportar el reporte. ${e is ApiException ? e.message : 'Intenta nuevamente.'}',
         );
+      }
     } finally {
       if (mounted) setState(() => exporting = false);
     }
@@ -401,7 +402,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   Widget build(BuildContext context) {
     if (screen == 'profile') return profile();
     if (screen == 'detail') return detailView();
-    if (screen == 'new')
+    if (screen == 'new') {
       return NewRequestScreen(
         api: widget.api,
         catalogs: catalogs ?? {},
@@ -417,6 +418,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           load();
         },
       );
+    }
     final hasData = summary != null && (summary!['total'] as num) > 0;
     return Column(
       children: [

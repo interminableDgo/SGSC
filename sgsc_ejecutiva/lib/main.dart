@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 
 import 'core/theme.dart';
 import 'screens/auth/login_screen.dart';
@@ -29,6 +30,9 @@ class _SgscAppState extends State<SgscApp> {
   Widget build(BuildContext context) {
     return MaterialApp(
       debugShowCheckedModeBanner: false,
+      locale: const Locale('es', 'MX'),
+      supportedLocales: const [Locale('es', 'MX')],
+      localizationsDelegates: GlobalMaterialLocalizations.delegates,
       title: 'SGSC Ejecutiva',
       theme: executiveTheme(),
       home: Scaffold(

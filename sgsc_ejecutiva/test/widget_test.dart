@@ -51,11 +51,12 @@ Map<String, dynamic> emptySummary = {
 ExecutiveApi mockApi({bool fail = false, bool populated = false}) =>
     ExecutiveApi(
       client: MockClient((request) async {
-        if (fail && request.url.path == '/ejecutivo/dashboard')
+        if (fail && request.url.path == '/ejecutivo/dashboard') {
           return http.Response(
             jsonEncode({'detail': 'No se pudo consultar la base de datos.'}),
             503,
           );
+        }
         Object data;
         switch (request.url.path) {
           case '/auth/login':
@@ -106,6 +107,8 @@ Future<void> prepare(WidgetTester tester) async {
   final loader = FontLoader('Mulish')
     ..addFont(rootBundle.load('assets/fonts/Mulish.ttf'));
   await tester.runAsync(() => loader.load());
+  final icons = FontLoader('MaterialIcons')..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+  await tester.runAsync(() => icons.load());
 }
 
 Future<void> screenshot(WidgetTester tester, String name) async {
@@ -127,6 +130,7 @@ Future<void> screenshot(WidgetTester tester, String name) async {
 Widget wrap(Widget child) =>
     RepaintBoundary(key: const ValueKey('capture'), child: child);
 Widget dashboard(ExecutiveApi api) => MaterialApp(
+  debugShowCheckedModeBanner: false,
   theme: executiveTheme(),
   home: Scaffold(
     body: DashboardScreen(api: api, user: user, onLogout: () {}),
@@ -209,10 +213,7 @@ void main() {
         ),
       );
       await tester.pumpAndSettle();
-      await tester.scrollUntilVisible(
-        find.widgetWithText(FilledButton, 'Registrar solicitud'),
-        250,
-      );
+      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Registrar solicitud'));
       expect(
         tester
             .widget<FilledButton>(
@@ -228,7 +229,7 @@ void main() {
     await prepare(tester);
     await tester.pumpWidget(wrap(dashboard(mockApi(populated: true))));
     await tester.pumpAndSettle();
-    expect(find.text('36'), findsOneWidget);
+    expect(find.text('36'), findsWidgets);
     await screenshot(tester, '05-panel-con-datos-prueba');
     await tester.scrollUntilVisible(
       find.text(

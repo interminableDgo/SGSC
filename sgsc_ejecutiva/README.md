@@ -1,17 +1,19 @@
-# sgsc_ejecutiva
+# Flutter · SIESAS Ejecutivo
 
-A new Flutter project.
+Desde SGSC, `./iniciar.ps1` abre los servicios locales ya compilados; la aplicación está en http://127.0.0.1:5173.
 
-## Getting Started
+Para desarrollo, usa Flutter 3.47.5 / Dart 3.13.4 o una versión compatible con pubspec.yaml:
 
-This project is a starting point for a Flutter application.
+```powershell
+flutter pub get
+flutter test --no-pub
+flutter build web --no-pub --dart-define=API_BASE_URL=http://127.0.0.1:8000
+```
 
-A few resources to get you started if this is your first Flutter project:
+En esta computadora se utilizó `dart pub get` y luego `flutter ... --no-pub` porque Windows no tiene habilitado el soporte de enlaces simbólicos para plugins de escritorio. Web compila y se prueba sin cambiar ajustes del sistema. La compilación de escritorio Windows requiere configurar ese soporte.
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+API_BASE_URL se define al compilar. En Android emulado, el valor predeterminado es http://10.0.2.2:8000; en web y escritorio, http://127.0.0.1:8000. Un dispositivo físico y cualquier publicación deben usar la URL HTTPS del backend.
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Los datos de prueba de test/widget_test.dart sólo existen en el cliente HTTP simulado de las pruebas; nunca se utilizan en la aplicación. SCREENSHOT_DIR permite capturar vistas de verificación durante las pruebas.
+
+Consulta ../README.md para alcance, estados vacíos y pendientes de configuración.

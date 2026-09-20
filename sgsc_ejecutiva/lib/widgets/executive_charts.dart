@@ -19,11 +19,12 @@ class DataBars extends StatelessWidget {
   });
   @override
   Widget build(BuildContext context) {
-    if (rows.isEmpty)
+    if (rows.isEmpty) {
       return const Text(
         'Sin datos para mostrar.',
         style: TextStyle(color: muted),
       );
+    }
     final max = rows.fold<double>(
       1,
       (n, r) => math.max(n, (r['total'] as num).toDouble()),
@@ -96,7 +97,7 @@ class _TrendChartState extends State<TrendChart> {
     final hasData = points.any(
       (p) => (p['recibidas'] as num) > 0 || (p['resueltas'] as num) > 0,
     );
-    if (!hasData)
+    if (!hasData) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 25),
         child: Text(
@@ -104,6 +105,7 @@ class _TrendChartState extends State<TrendChart> {
           style: TextStyle(color: muted),
         ),
       );
+    }
     return Column(
       children: [
         const Row(
@@ -257,8 +259,9 @@ class _RegionMapState extends State<RegionMap> {
                     final found = widget.rows.where(
                       (r) => r['nombre'] == item['region'] && r['id'] != null,
                     );
-                    if (found.isNotEmpty)
+                    if (found.isNotEmpty) {
                       widget.onSelect('${found.first['id']}');
+                    }
                     break;
                   }
                 }
@@ -285,7 +288,7 @@ class _RegionMapState extends State<RegionMap> {
           style: TextStyle(fontSize: 12, color: muted),
         ),
       ...widget.rows.map(
-        (r) => ListTile(
+        (r) => Material(color: Colors.transparent, child: ListTile(
           dense: true,
           contentPadding: EdgeInsets.zero,
           selected: widget.active != null && widget.active == '${r['id']}',
@@ -296,7 +299,7 @@ class _RegionMapState extends State<RegionMap> {
             style: const TextStyle(fontWeight: FontWeight.w800),
           ),
           onTap: r['id'] == null ? null : () => widget.onSelect('${r['id']}'),
-        ),
+        )),
       ),
       const Text(
         'Mapa de referencia del diseño original. La clasificación visual es aproximada; los conteos corresponden al catálogo de la base de datos.',
