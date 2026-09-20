@@ -1,0 +1,78 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:http/http.dart' as http;
+
+import '../core/api_config.dart';
+
+class ApiException implements Exception {
+  final String message;
+  final int status;
+  ApiException(this.message, [this.status = 0]);
+  @override
+  String toString() => message;
+}
+
+class ExecutiveApi {
+  final http.Client client;
+  final String baseUrl;
+  String? token;
+  ExecutiveApi({http.Client? client, String? baseUrl})
+    : client = client ?? http.Client(),
+      baseUrl = baseUrl ?? ApiConfig.baseUrl;
+  Future<http.Response> request(
+    String path, {
+    Map<String, dynamic>? body,
+    Map<String, String> query = const {},
+  }) async {
+    final uri = Uri.parse('$baseUrl$path')
+        .replace(queryParameters: query.isEmpty ? null : query);
+    final headers = {
+      'Content-Type': 'application/json',
+      if (token != null) 'Authorization': 'Bearer $token',
+    };
+    http.Response response;
+    try {
+      response =
+          await (body == null
+                  ? client.get(uri, headers: headers)
+                  : client.post(uri, headers: headers, body: jsonEncode(body)))
+              .timeout(const Duration(seconds: 30));
+    } on TimeoutException {
+      throw ApiException('La conexión tardó demasiado. Intenta nuevamente.');
+    } on http.ClientException {
+      throw ApiException(
+        'No se pudo conectar. Revisa tu conexión e intenta nuevamente.',
+      );
+    }
+    if (response.statusCode >= 400) {
+      String message = 'No fue posible completar la operación.';
+      try {
+        final detail =
+            (jsonDecode(utf8.decode(response.bodyBytes)) as Map)['detail'];
+        message = detail is String
+            ? detail
+            : 'Revisa los campos del formulario.';
+      } catch (_) {}
+      throw ApiException(message, response.statusCode);
+    }
+    return response;
+  }
+
+  Future<Map<String, dynamic>> get(
+    String path, [
+    Map<String, String> query = const {},
+  ]) async =>
+      jsonDecode(utf8.decode((await request(path, query: query)).bodyBytes))
+          as Map<String, dynamic>;
+  Future<Map<String, dynamic>> post(
+    String path,
+    Map<String, dynamic> body,
+  ) async =>
+      jsonDecode(utf8.decode((await request(path, body: body)).bodyBytes))
+          as Map<String, dynamic>;
+  Future<Uint8List> export(String format, Map<String, String> filters) async =>
+      (await request('/ejecutivo/exportar/$format', query: filters)).bodyBytes;
+  void dispose() => client.close();
+}

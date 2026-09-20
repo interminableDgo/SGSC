@@ -1,7 +1,11 @@
-from fastapi import FastAPI
+import os
+import logging
+from fastapi import FastAPI, Request
+from fastapi.responses import JSONResponse
+from sqlalchemy.exc import SQLAlchemyError
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import catalogos, dashboard, health, solicitudes, indicadores
+from app.routers import health, auth, executive
 
 app = FastAPI(
     title="SGSC Salud API",
@@ -15,17 +19,30 @@ app = FastAPI(
 # En producción se deben reemplazar los orígenes "*" por dominios permitidos.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[s.strip() for s in os.getenv('CORS_ORIGINS','http://localhost:5173,http://127.0.0.1:5173').split(',') if s.strip()],
     allow_credentials=False,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 app.include_router(health.router)
-app.include_router(catalogos.router)
-app.include_router(solicitudes.router)
-app.include_router(dashboard.router)
-app.include_router(indicadores.router)
+app.include_router(auth.router)
+app.include_router(executive.router)
+
+
+@app.exception_handler(SQLAlchemyError)
+async def database_error(request: Request, exc: SQLAlchemyError):
+    logging.getLogger(__name__).error('Database request failed: %s', type(exc).__name__)
+    return JSONResponse(status_code=503, content={'detail': 'No se pudo consultar la base de datos. Intenta nuevamente.'})
+
+
+@app.middleware('http')
+async def no_cache(request: Request, call_next):
+    response = await call_next(request)
+    response.headers['Cache-Control'] = 'no-store'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    return response
 
 
 @app.get("/")

@@ -3,3 +3,11 @@ uvicorn[standard]
 sqlalchemy
 pymysql
 python-dotenv
+cryptography
+argon2-cffi
+pyotp
+email-validator
+openpyxl
+reportlab
+pytest
+httpx

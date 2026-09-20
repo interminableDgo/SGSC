@@ -3,6 +3,9 @@ backend/.venv/
 backend/__pycache__/
 backend/**/__pycache__/
 backend/*.pyc
+backend/*.local.*
+backend/ca.pem
+backend/.pytest_cache/
 
 # Variables de entorno / secretos
 backend/.env

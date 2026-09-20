@@ -20,5 +20,5 @@ def database_health(db: Session = Depends(get_db)):
     except Exception as exc:
         raise HTTPException(
             status_code=503,
-            detail=f"No se pudo conectar a MySQL: {exc}",
+            detail="No se pudo conectar a MySQL.",
         )
