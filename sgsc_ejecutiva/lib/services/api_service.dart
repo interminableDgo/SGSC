@@ -16,11 +16,14 @@ class ApiService {
       );
     }
 
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    return jsonDecode(response.body)
+        as Map<String, dynamic>;
   }
 
   Future<Map<String, dynamic>> databaseHealth() async {
-    final url = Uri.parse('${ApiConfig.baseUrl}/health/db');
+    final url = Uri.parse(
+      '${ApiConfig.baseUrl}/health/db',
+    );
 
     final response = await http.get(url);
 
@@ -30,6 +33,24 @@ class ApiService {
       );
     }
 
-    return jsonDecode(response.body) as Map<String, dynamic>;
+    return jsonDecode(response.body)
+        as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> dashboardResumen() async {
+    final url = Uri.parse(
+      '${ApiConfig.baseUrl}/dashboard/resumen',
+    );
+
+    final response = await http.get(url);
+
+    if (response.statusCode != 200) {
+      throw Exception(
+        'Error al cargar dashboard: ${response.statusCode}',
+      );
+    }
+
+    return jsonDecode(response.body)
+        as Map<String, dynamic>;
   }
 }

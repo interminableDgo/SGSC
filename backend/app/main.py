@@ -1,7 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app.routers import catalogos, dashboard, health, solicitudes
+from app.routers import catalogos, dashboard, health, solicitudes, indicadores
 
 app = FastAPI(
     title="SGSC Salud API",
@@ -25,6 +25,7 @@ app.include_router(health.router)
 app.include_router(catalogos.router)
 app.include_router(solicitudes.router)
 app.include_router(dashboard.router)
+app.include_router(indicadores.router)
 
 
 @app.get("/")
