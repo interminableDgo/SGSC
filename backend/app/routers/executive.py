@@ -1,6 +1,6 @@
 import io
 import uuid
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from html import escape
 from typing import Literal
 
@@ -40,6 +40,12 @@ def catalogs(user=Depends(current_user),db:Session=Depends(get_db)):
 @router.get('/dashboard')
 def dashboard(selected=Depends(svc.filters),user=Depends(current_user),db:Session=Depends(get_db)):
     return svc.dashboard(db,user,selected)
+
+
+@router.get('/comparacion')
+def comparison(a_inicio:date, a_fin:date, b_inicio:date, b_fin:date,
+    selected=Depends(svc.filters),user=Depends(current_user),db:Session=Depends(get_db)):
+    return svc.compare_periods(db,user,selected,a_inicio,a_fin,b_inicio,b_fin)
 
 
 @router.get('/solicitudes')

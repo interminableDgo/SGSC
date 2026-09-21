@@ -7,6 +7,7 @@ import '../../core/theme.dart';
 import '../../services/executive_api.dart';
 import '../../widgets/executive_widgets.dart';
 import '../../widgets/executive_charts.dart';
+import '../../widgets/period_comparison.dart';
 import '../solicitudes/nueva_solicitud_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -30,6 +31,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   String screen = 'dashboard';
   String? error, message;
   bool loading = true, showFilters = false, exporting = false;
+  bool showComparison = false;
   int page = 0, total = 0, generation = 0;
   static const filterDefinitions = [
     ['Municipio', 'municipio_id', 'municipios'],
@@ -505,6 +507,19 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     ),
                   ),
                 if (message != null) Notice(message!),
+                if (catalogs != null)
+                  OutlinedButton.icon(
+                    onPressed: () =>
+                        setState(() => showComparison = !showComparison),
+                    icon: const Icon(Icons.compare_arrows),
+                    label: Text(
+                      showComparison
+                          ? 'Ocultar comparación'
+                          : 'Comparar meses o años',
+                    ),
+                  ),
+                if (catalogs != null && showComparison)
+                  PeriodComparison(api: widget.api, filters: Map.from(filters)),
                 if (loading)
                   const Padding(
                     padding: EdgeInsets.all(36),
@@ -518,6 +533,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     label: const Text('Reintentar'),
                   ),
                 ] else if (summary != null) ...[
+                  if ((summary!['datos_demo'] as num? ?? 0) > 0)
+                    Notice(
+                      'Este panel incluye ${summary!['datos_demo']} solicitudes ficticias de prueba, identificadas con folios DEMO-COMP-.',
+                    ),
                   ExecutiveCard(
                     title: 'Solicitudes registradas',
                     source: 'Cantidad de solicitudes del estado asignado que cumplen los filtros. No representa personas únicas ni apoyos entregados.',

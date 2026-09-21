@@ -72,6 +72,18 @@ def sign_in(client,address,password):
     return {'Authorization':'Bearer '+token}
 
 
+def test_comparison_api_auth_validation_and_empty_scope(live):
+    client,db,uid,address,password,eid=live
+    params={'a_inicio':'2024-02-01','a_fin':'2024-02-29','b_inicio':'2025-02-01','b_fin':'2025-02-28','municipio_id':2147483647}
+    assert client.get('/ejecutivo/comparacion',params=params).status_code==401
+    headers=sign_in(client,address,password)
+    response=client.get('/ejecutivo/comparacion',params=params,headers=headers)
+    assert response.status_code==200
+    assert response.json()['a']['total']==response.json()['b']['total']==0
+    assert response.json()['variacion']['total']['porcentaje']==0
+    assert client.get('/ejecutivo/comparacion',params={**params,'b_fin':'2024-01-01'},headers=headers).status_code==422
+
+
 def test_empty_data_scope_registration_exports_and_logout(live):
     client,db,uid,address,password,eid=live
     assert client.get('/ejecutivo/dashboard').status_code==401

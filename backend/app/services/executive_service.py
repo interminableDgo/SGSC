@@ -81,7 +81,26 @@ def dashboard(db, user, selected):
       SELECT DATE_FORMAT(sa.fecha_cierre,'%Y-%m') AS mes, 0 AS recibidas, COUNT(*) AS resueltas
       {JOINS} {where} AND es.es_resuelto=1 AND sa.fecha_cierre IS NOT NULL GROUP BY mes
       ) series GROUP BY mes ORDER BY mes''', params)
-    return {**totals, **groups(db,user,selected), 'tendencia': month_series(series)}
+    demo = db.execute(text('SELECT COUNT(*) '+JOINS+where+" AND sa.folio LIKE 'DEMO-COMP-%'"),params).scalar_one()
+    return {**totals, **groups(db,user,selected), 'tendencia': month_series(series), 'datos_demo': demo}
+
+
+def compare_periods(db, user, selected, a_inicio, a_fin, b_inicio, b_fin):
+    if a_inicio > a_fin or b_inicio > b_fin:
+        raise HTTPException(422, 'La fecha inicial debe ser anterior a la final.')
+    periods = []
+    for start, end in [(a_inicio, a_fin), (b_inicio, b_fin)]:
+        where, params = where_clause(user, {**selected, 'fecha_inicio': start, 'fecha_fin': end})
+        values = query_rows(db, '''SELECT COUNT(*) AS total,
+          COALESCE(SUM(es.es_cerrado=0),0) AS activas,
+          COALESCE(SUM(es.es_resuelto=1),0) AS resueltas,
+          COALESCE(SUM(sa.folio LIKE 'DEMO-COMP-%'),0) AS datos_demo '''+JOINS+where, params)[0]
+        periods.append({'inicio': start, 'fin': end, **{k:int(v) for k,v in values.items()}})
+    changes = {}
+    for key in ['total', 'activas', 'resueltas']:
+        a, b = periods[0][key], periods[1][key]
+        changes[key] = {'diferencia': b-a, 'porcentaje': round((b-a)*100/a, 1) if a else (0 if b == 0 else None)}
+    return {'a': periods[0], 'b': periods[1], 'variacion': changes}
 
 
 ROW_SELECT = '''SELECT sa.solicitud_id, sa.folio, sa.fecha_recepcion, sa.fecha_cierre,

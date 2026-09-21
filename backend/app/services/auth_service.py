@@ -2,7 +2,7 @@ import os
 import smtplib
 import ssl
 from email.message import EmailMessage
-from email.utils import formataddr, parseaddr
+from email.utils import formataddr, formatdate, make_msgid, parseaddr
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 from fastapi import HTTPException
@@ -21,13 +21,25 @@ def build_reset_message(address, token):
     display, sender = parseaddr(os.environ['SMTP_FROM'])
     message['From'] = formataddr((display or os.getenv('SMTP_FROM_NAME', 'SIESAS · Gobierno de Nuevo León'), sender))
     message['To'] = address
+    message['Date'] = formatdate(localtime=False)
+    message['Message-ID'] = make_msgid(domain=sender.rsplit('@', 1)[-1])
     base = urlsplit(os.environ['RESET_URL'])
     params = [(key, value) for key, value in parse_qsl(base.query) if key != 'reset_token']
     params.append(('reset_token', token))
     link = urlunsplit(base._replace(query=urlencode(params)))
-    message.set_content(reset_plain_text(link))
-    message.add_alternative(render_reset_email(link), subtype='html')
-    message.get_payload()[-1].add_related(LOGO_PATH.read_bytes(), maintype='image', subtype='png', cid='<siesas-logo>', disposition='inline', filename='siesas-nuevo-leon.png')
+    message.make_related()
+    body = EmailMessage()
+    body.set_content(reset_plain_text(link))
+    # A unique, fully qualified Content-ID lets mail clients resolve the image.
+    logo_cid = make_msgid(domain=sender.rsplit('@', 1)[-1])
+    body.add_alternative(render_reset_email(link, logo_src=f'cid:{logo_cid[1:-1]}'), subtype='html')
+    body_cid = make_msgid(domain=sender.rsplit('@', 1)[-1])
+    body['Content-ID'] = body_cid
+    message.attach(body)
+    message.add_related(LOGO_PATH.read_bytes(), maintype='image', subtype='png', cid=logo_cid, disposition='inline', filename='siesas-nuevo-leon.png')
+    message.get_payload()[-1]['X-Attachment-Id'] = logo_cid[1:-1]
+    message.set_param('type', 'multipart/alternative')
+    message.set_param('start', body_cid)
     return message
 
 
