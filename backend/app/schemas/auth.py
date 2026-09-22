@@ -2,7 +2,7 @@ from pydantic import BaseModel, EmailStr, Field
 
 
 class EmailInput(BaseModel):
-    correo: EmailStr = Field(max_length=180)
+    correo: EmailStr = Field(max_length=150)
 
 
 class LoginInput(EmailInput):

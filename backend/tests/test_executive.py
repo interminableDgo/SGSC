@@ -45,11 +45,10 @@ def live():
     db=Session(bind=connection,join_transaction_mode='create_savepoint')
     address=f'codex-test-{uuid.uuid4().hex}@example.com'
     password='Una frase de prueba segura 2026'
-    uid=db.execute(text('INSERT INTO usuario (nombres,apellidos,correo,password_hash) VALUES (:n,:a,:e,:p)'),
+    uid=db.execute(text("INSERT INTO Tbl_Users (us_name,us_lastname,us_email,us_account,us_pwd,us_phone,us_rol,is_active,createdBy,updatedBy) VALUES (:n,:a,:e,:e,:p,'','Ejecutivo',1,0,0)"),
       {'n':'Prueba temporal','a':'Transacción','e':address,'p':hasher.hash(password)}).lastrowid
-    eid=db.execute(text("SELECT entidad_id FROM cat_entidad_federativa WHERE clave_inegi='19'")).scalar_one()
-    rid=db.execute(text("SELECT rol_id FROM cat_rol WHERE clave='EJECUTIVO'")).scalar_one()
-    db.execute(text('INSERT INTO usuario_rol (usuario_id,rol_id) VALUES (:u,:r)'),{'u':uid,'r':rid})
+    eid=db.execute(text("SELECT id FROM INEGI_Cat_Entidades WHERE cve_ent='19'")).scalar_one()
+    db.execute(text("INSERT INTO auth_assignment (item_name,user_id,created_at) VALUES ('Ejecutivo',:u,UNIX_TIMESTAMP())"),{'u':str(uid)})
     db.execute(text('INSERT INTO ejecutivo_acceso (usuario_id,entidad_id) VALUES (:u,:e)'),{'u':uid,'e':eid})
     db.commit()
     def override():
@@ -92,9 +91,19 @@ def test_empty_data_scope_registration_exports_and_logout(live):
     assert initial.status_code==200,initial.text
     before=initial.json()['total']
     cats=client.get('/ejecutivo/catalogos',headers=headers).json()
-    data={'nombres':'Beneficiario temporal','apellidos':'Prueba','descripcion':'Prueba aislada, se revierte',
-      'municipio_id':cats['municipios'][0]['id'],'tipo_apoyo_id':cats['apoyos'][0]['id'],
-      'dependencia_id':cats['dependencias'][0]['id'],'idempotencia':str(uuid.uuid4())}
+    mid=cats['municipios'][0]['id']
+    data={'beneficiario':{'nombres':'Beneficiario temporal','apellidos':'Prueba',
+      'fecha_nacimiento':'1990-01-01','genero_id':cats['generos'][0]['id'],
+      'municipio_nacimiento_id':mid,'municipio_id':mid,'calle':'Temporal','numero':'1','colonia_id':1,
+      'codigo_postal':'64000','tiempo_residencia':1,'con_quien_vive':'Familia','numero_hijos':0,
+      'seguridad_social_id':cats['seguridad_social'][0]['id'],'grupo_vulnerable_id':cats['grupos'][0]['id']},
+      'solicitante':{'nombres':'Solicitante temporal','apellidos':'Prueba',
+      'parentesco_id':cats['parentescos'][0]['id'],'fecha_nacimiento':'1990-01-01',
+      'municipio_id':mid,'calle':'Temporal','numero':'1','colonia':'Temporal','codigo_postal':'64000','telefono':'8112345678'},
+      'tipo_apoyo_id':cats['apoyos'][0]['id'],'dependencia_id':cats['dependencias'][0]['id'],
+      'enviado_por_id':cats['origenes'][0]['id'],'canal_id':cats['canales'][0]['id'],
+      'unidad_tratante_id':cats['unidades'][0]['id'],'descripcion':'Prueba aislada, se revierte',
+      'idempotencia':str(uuid.uuid4())}
     created=client.post('/ejecutivo/solicitudes',json=data,headers=headers)
     assert created.status_code==201,created.text
     assert client.post('/ejecutivo/solicitudes',json=data,headers=headers).json()==created.json()
@@ -103,14 +112,23 @@ def test_empty_data_scope_registration_exports_and_logout(live):
     assert summary['total']==before+1
     assert sum(r['total'] for r in summary['municipios'])==summary['total']
     assert sum(r['total'] for r in summary['grupos'])==summary['total']
+    db.execute(text("UPDATE Tbl_SolicitudesApoyo SET created='2024-02-29 12:00:00', solapoyo_statusid=(SELECT id FROM Cat_StatusAtencion WHERE descripcion='Resuelto') WHERE solapoyo_id=:sid"),{'sid':sid})
+    db.commit()
+    comparison=client.get('/ejecutivo/comparacion',params={'a_inicio':'2024-02-01','a_fin':'2024-02-29','b_inicio':'2025-02-01','b_fin':'2025-02-28','municipio_id':mid},headers=headers).json()
+    assert comparison['a']['total']==1 and comparison['a']['resueltas']==1 and comparison['a']['activas']==0
+    assert comparison['b']['total']==0
+    assert comparison['variacion']['total']['porcentaje']==-100.0
+    found=client.get('/ejecutivo/personas',params={'tipo':'beneficiario','q':'Beneficiario temporal'},headers=headers)
+    assert found.status_code==200 and found.json()['items']
+    assert client.get('/ejecutivo/dashboard?region_id=1',headers=headers).status_code==422
     filtered=client.get('/ejecutivo/dashboard?municipio_id=2147483647',headers=headers).json()
     assert filtered['total']==0
-    assert filtered['regiones']==[]
+    assert 'regiones' not in filtered
     assert len(filtered['tendencia'])==12
-    assert client.get(f'/ejecutivo/solicitudes/{sid}',headers=headers).json()['nombres']==data['nombres']
+    assert client.get(f'/ejecutivo/solicitudes/{sid}',headers=headers).json()['nombres']==data['beneficiario']['nombres']
     assert client.get('/ejecutivo/solicitudes/2147483647',headers=headers).status_code==404
     assert client.get('/ejecutivo/dashboard?fecha_inicio=2026-12-01&fecha_fin=2026-01-01',headers=headers).status_code==422
-    assert client.post('/ejecutivo/solicitudes',json={**data,'municipio_id':2147483647,'idempotencia':str(uuid.uuid4())},headers=headers).status_code==422
+    assert client.post('/ejecutivo/solicitudes',json={**data,'beneficiario':{**data['beneficiario'],'municipio_id':2147483647},'idempotencia':str(uuid.uuid4())},headers=headers).status_code==422
     for fmt in ['xlsx','pdf']:
         report=client.get('/ejecutivo/exportar/'+fmt,headers=headers)
         assert report.status_code==200,report.text[:200]
@@ -119,7 +137,7 @@ def test_empty_data_scope_registration_exports_and_logout(live):
             book=load_workbook(io.BytesIO(report.content))
             assert book['Solicitudes'].max_row==before+5
     # An account assigned to another entity cannot see or register NL requests.
-    other=db.execute(text("INSERT INTO cat_entidad_federativa (clave_inegi,nombre) VALUES ('99','Prueba temporal aislada')")).lastrowid
+    other=db.execute(text("SELECT id FROM INEGI_Cat_Entidades WHERE cve_ent='01'")).scalar_one()
     db.execute(text('UPDATE ejecutivo_acceso SET entidad_id=:e WHERE usuario_id=:u'),{'e':other,'u':uid})
     db.commit()
     assert client.get(f'/ejecutivo/solicitudes/{sid}',headers=headers).status_code==404
@@ -166,6 +184,6 @@ def test_missing_mail_and_inactive_user(live,monkeypatch):
     client,db,uid,address,password,eid=live
     monkeypatch.delenv('SMTP_HOST',raising=False)
     assert client.post('/auth/forgot-password',json={'correo':address}).status_code==503
-    db.execute(text('UPDATE usuario SET activo=0 WHERE usuario_id=:u'),{'u':uid})
+    db.execute(text('UPDATE Tbl_Users SET is_active=0 WHERE us_id=:u'),{'u':uid})
     db.commit()
     assert client.post('/auth/login',json={'correo':address,'password':password}).status_code==401

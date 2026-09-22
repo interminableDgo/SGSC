@@ -11,3 +11,4 @@ openpyxl
 reportlab
 pytest
 httpx
+bcrypt

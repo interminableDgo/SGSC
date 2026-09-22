@@ -10,7 +10,7 @@ from app.security import hasher
 
 
 def migrate():
-    sql=(Path(__file__).parent/'migrations/001_ejecutivo.sql').read_text(encoding='utf-8')
+    sql=(Path(__file__).parent/'migrations/002_ssnl_ejecutivo.sql').read_text(encoding='utf-8')
     with engine.begin() as db:
         for statement in sql.split(';'):
             if statement.strip():
@@ -19,18 +19,13 @@ def migrate():
 
 
 def seed():
-    with engine.begin() as db:
-        for name in ['Ayuda técnica','Medicamento','Estudios clínicos']:
-            db.execute(text('INSERT IGNORE INTO cat_tipo_apoyo (nombre) VALUES (:name)'),{'name':name})
-        for name in ['Secretaría de Salud','DIF Nuevo León']:
-            db.execute(text('INSERT IGNORE INTO cat_dependencia (nombre) VALUES (:name)'),{'name':name})
-    print('Catálogos del wireframe cargados sin reemplazar registros existentes.')
+    raise SystemExit('SSNL utiliza sus catálogos originales. No se cargan los catálogos del wireframe.')
 
 
 def provision(args):
     with engine.begin() as db:
-        entity=db.execute(text('SELECT entidad_id FROM cat_entidad_federativa WHERE clave_inegi=:code AND activo=1'),{'code':args.entidad}).scalar_one()
-        uid=db.execute(text('SELECT usuario_id FROM usuario WHERE correo=:email'),{'email':args.correo}).scalar()
+        entity=db.execute(text('SELECT id FROM INEGI_Cat_Entidades WHERE cve_ent=:code'),{'code':args.entidad}).scalar_one()
+        uid=db.execute(text('SELECT us_id FROM Tbl_Users WHERE us_email=:email'),{'email':args.correo}).scalar()
         if uid:
             raise SystemExit('La cuenta ya existe. No se modificó.')
         pending=db.execute(text('SELECT password_hash FROM ejecutivo_acceso_solicitud WHERE correo=:email'),{'email':args.correo}).scalar()
@@ -39,20 +34,22 @@ def provision(args):
             if not 15 <= len(password) <= 128:
                 raise SystemExit('Longitud inválida.')
             pending=hasher.hash(password)
-        uid=db.execute(text('INSERT INTO usuario (nombres,apellidos,correo,password_hash) VALUES (:n,:a,:e,:p)'),
-          {'n':args.nombres,'a':args.apellidos,'e':args.correo,'p':pending}).lastrowid
-        role=db.execute(text("SELECT rol_id FROM cat_rol WHERE clave='EJECUTIVO' AND activo=1")).scalar_one()
-        db.execute(text('INSERT INTO usuario_rol (usuario_id,rol_id) VALUES (:u,:r)'),{'u':uid,'r':role})
+        uid=db.execute(text("""INSERT INTO Tbl_Users
+          (us_name,us_lastname,us_email,us_account,us_pwd,us_phone,us_rol,is_active,createdBy,updatedBy)
+          VALUES (:n,:a,:e,:e,:p,:phone,'Ejecutivo',1,0,0)"""),
+          {'n':args.nombres,'a':args.apellidos,'e':args.correo,'p':pending,'phone':args.telefono}).lastrowid
+        db.execute(text('UPDATE Tbl_Users SET createdBy=:u,updatedBy=:u WHERE us_id=:u'),{'u':uid})
+        db.execute(text("INSERT INTO auth_assignment (item_name,user_id,created_at) VALUES ('Ejecutivo',:u,UNIX_TIMESTAMP())"),{'u':str(uid)})
         db.execute(text('INSERT INTO ejecutivo_acceso (usuario_id,entidad_id) VALUES (:u,:e)'),{'u':uid,'e':entity})
         db.execute(text('DELETE FROM ejecutivo_acceso_solicitud WHERE correo=:email'),{'email':args.correo})
-    print('Cuenta ejecutiva autorizada.')
+    print('Cuenta ejecutiva autorizada en SSNL.')
 
 
 def setup_2fa(args):
     import pyotp
     from app.security import cipher
     with engine.begin() as db:
-        uid=db.execute(text('SELECT usuario_id FROM usuario WHERE correo=:email AND activo=1'),{'email':args.correo}).scalar_one()
+        uid=db.execute(text('SELECT us_id FROM Tbl_Users WHERE us_email=:email AND is_active=1'),{'email':args.correo}).scalar_one()
         current=db.execute(text('SELECT totp_secret FROM ejecutivo_acceso WHERE usuario_id=:uid'),{'uid':uid}).scalar_one()
         if current:
             raise SystemExit('La cuenta ya tiene verificación en dos pasos. No se modificó.')
@@ -73,6 +70,7 @@ if __name__=='__main__':
     account=sub.add_parser('create-user')
     for key in ['correo','nombres','apellidos']:
         account.add_argument('--'+key,required=True)
+    account.add_argument('--telefono',default='')
     account.add_argument('--entidad',default='19',help='Clave INEGI del estado autorizado')
     second_factor=sub.add_parser('setup-2fa')
     second_factor.add_argument('--correo',required=True)

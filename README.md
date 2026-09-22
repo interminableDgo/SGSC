@@ -1,6 +1,6 @@
 # SIESAS · Ejecutivo
 
-Réplica Flutter del módulo `AppEjecutivi.tsx` de los wireframes, conectada a FastAPI y MySQL. Incluye acceso, recuperación, solicitud de cuenta, verificación TOTP si la cuenta la tiene configurada, perfil, indicadores, filtros, mapa, detalle, registro y exportación Excel/PDF.
+Réplica Flutter del módulo `AppEjecutivi.tsx` de los wireframes, conectada a FastAPI y MySQL. Incluye acceso, recuperación, solicitud de cuenta, verificación TOTP si la cuenta la tiene configurada, perfil, indicadores, filtros, comparación de periodos, detalle, registro y exportación Excel/PDF.
 
 ## Abrir en esta computadora
 
@@ -10,13 +10,15 @@ La fuente visual es el wireframe: Mulish, naranja institucional, azul Salud, tar
 
 ## Datos y alcance
 
-- Los datos provienen de `sgsc_salud` en Aiven mediante TLS, validando CA y nombre de servidor. Las credenciales y el certificado están en archivos locales excluidos de Git.
-- Los endpoints ejecutivos comprueban cuenta activa, rol EJECUTIVO y entidad asignada en **cada solicitud**. No aceptan un estado enviado por el cliente.
-- Los catálogos iniciales de apoyo y dependencia son los autorizados del wireframe. Los municipios se leen del catálogo existente: actualmente 15. No se inventan los 36 registros demostrativos ni los municipios faltantes.
-- El mapa conserva las 51 geometrías del prototipo y advierte que la agrupación visual regional es aproximada. Las cifras y el filtro regional usan las relaciones reales de MySQL.
-- El registro crea un beneficiario con los datos capturados y una solicitud Recibida / Media / App Ejecutiva. Guarda autor e historial. La misma clave de reintento no crea duplicados. No se deduplican personas sólo por coincidencia de nombre.
-- Los filtros se aplican en el servidor al resumen, barras, tendencia, lista y exportaciones. Las resueltas se cuentan por fecha de cierre; el filtro de periodo delimita fecha de recepción. La tendencia abarca los últimos 12 meses.
-- No hay registros de ejemplo permanentes. Las pruebas MySQL crean datos en una transacción exterior y la revierten.
+- La base activa es `siesas-v2` en Aiven, importada de `SSNL-original.sql`. La conexión valida certificado TLS y nombre de servidor. La anterior, `sgsc_salud`, permanece intacta.
+- Las 31 tablas originales mantienen su estructura. Cinco tablas auxiliares sostienen acceso por entidad, sesiones/recuperación, solicitudes de cuenta, límites e idempotencia. Se documentan en `backend/migrations/002_ssnl_ejecutivo.sql`.
+- Las consultas usan directamente `Tbl_SolicitudesApoyo`, `Tbl_Beneficiarios` y los catálogos SSNL. No hay vistas de equivalencia ni traslado de solicitudes de la base anterior.
+- Cada solicitud de API verifica cuenta activa, rol Ejecutivo y entidad asignada. El municipio utilizado es el domicilio del beneficiario y se verifica su coherencia con la entidad.
+- El registro tiene tres pasos: beneficiario, solicitante y solicitud. Permite expedientes existentes o nuevos con los datos obligatorios. Asigna estatus Inicio, conserva autoría y evita duplicados por reintentos.
+- Los filtros se aplican a resumen, barras, tendencia, comparación, listado y exportaciones. Los periodos se basan en fecha de registro. “Resueltas actualmente” describe el estado actual de cada cohorte, no el mes de resolución.
+- Se retiraron regiones, prioridad por solicitud y fecha de cierre porque el esquema original no las respalda. La dependencia se identifica como remitente y la unidad tratante se muestra aparte.
+- Se conservaron los expedientes de ejemplo incluidos en SSNL. Las pruebas adicionales se ejecutan en transacciones que se revierten.
+- Pendiente de confirmar con el proyecto original: el catálogo o interpretación de `ben_dom_colonia`, que exige un entero. Por ahora se pide la clave del expediente, sin inventar datos.
 
 ## Estados vacíos
 
@@ -24,9 +26,9 @@ Sin solicitudes: total cero, invitación a registrar la primera y exportación d
 
 ## Acceso y correo
 
-La cuenta inicial de Aldo tiene ámbito Nuevo León. La contraseña se establece mediante un enlace de primer acceso de un solo uso. Las sesiones son tokens opacos aleatorios guardados como hash y duran 8 horas; el cliente los mantiene en memoria. Recargar la página requiere iniciar sesión otra vez.
+La cuenta inicial de Aldo tiene ámbito Nuevo León. Se conservó el hash de su contraseña actual al crear su cuenta en SSNL. Las sesiones son tokens opacos aleatorios guardados como hash y duran 8 horas; el cliente los mantiene en memoria. Recargar la página requiere iniciar sesión otra vez.
 
-**Pendiente de configuración externa:** SMTP_HOST, SMTP_FROM y credenciales del proveedor de correo. Mientras falten, Recuperar contraseña muestra que el servicio no está disponible; no afirma haber enviado un correo. Al configurarlas, el enlace abre la pantalla Flutter web para cambiar la contraseña, también desde el correo del teléfono. No se configuraron enlaces universales nativos ni un dominio público.
+El envío SMTP está configurado en el archivo local excluido de Git. Se conservó y se verificó su autenticación durante el cambio a SSNL. Los enlaces apuntan al servidor local de esta computadora; para abrirlos desde otro dispositivo hace falta una dirección accesible y configurar RESET_URL. No se configuró un dominio público.
 
 La contraseña admite de 15 a 128 caracteres y se guarda con Argon2. El enlace vence en 30 minutos, es de un solo uso y revoca las sesiones al cambiar la contraseña. La verificación TOTP es real cuando está configurada; no existe un código universal de demostración.
 

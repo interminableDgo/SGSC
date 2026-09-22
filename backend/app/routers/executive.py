@@ -1,5 +1,4 @@
 import io
-import uuid
 from datetime import date, datetime, timezone
 from html import escape
 from typing import Literal
@@ -7,34 +6,55 @@ from typing import Literal
 from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from openpyxl import Workbook
 from openpyxl.styles import Font, PatternFill
-from pydantic import BaseModel, Field, field_validator
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4, landscape
 from reportlab.lib.styles import getSampleStyleSheet
 from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
 from sqlalchemy import text
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
-from app.security import current_user, now
+from app.security import current_user
 from app.services import executive_service as svc
+from app.services.ssnl_registration import NewRequest, create_request as save_ssnl_request
 
 router=APIRouter(prefix='/ejecutivo',tags=['Ejecutivo'])
 
 
+CATALOGS = {'apoyos':'Cat_TipoApoyo','dependencias':'Cat_Dependencias','grupos':'Cat_GruposVulnerables',
+ 'estatus':'Cat_StatusAtencion','canales':'Cat_CanalesRecepcion','origenes':'Cat_EnviadoPor',
+ 'unidades':'Cat_UnidadesTratantes','parentescos':'Cat_Parentescos','generos':'Cat_Generos',
+ 'seguridad_social':'Cat_SeguridadSocial','partidos':'Cat_PartidosPoliticos'}
+
 @router.get('/catalogos')
 def catalogs(user=Depends(current_user),db:Session=Depends(get_db)):
-    result={}
-    for name, table, pk in [
-      ('apoyos','cat_tipo_apoyo','tipo_apoyo_id'),('dependencias','cat_dependencia','dependencia_id'),
-      ('grupos','cat_grupo_vulnerable','grupo_vulnerable_id'),('estatus','cat_estatus_solicitud','estatus_id')]:
-        result[name]=svc.query_rows(db,f'SELECT {pk} AS id,nombre FROM {table} WHERE activo=1 ORDER BY nombre',{})
-    result['municipios']=svc.query_rows(db,'''SELECT municipio_id AS id,nombre,clave_inegi,region_id
-      FROM cat_municipio WHERE activo=1 AND entidad_id=:eid ORDER BY nombre''',{'eid':user['entidad_id']})
-    result['regiones']=svc.query_rows(db,'''SELECT DISTINCT r.region_id AS id,r.nombre FROM cat_region r
-      JOIN cat_municipio m ON m.region_id=r.region_id WHERE r.activo=1 AND m.entidad_id=:eid ORDER BY r.nombre''',{'eid':user['entidad_id']})
+    result={key:svc.query_rows(db,f'SELECT id,descripcion AS nombre FROM `{table}` WHERE is_active=1 ORDER BY descripcion',{})
+      for key,table in CATALOGS.items()}
+    result['municipios']=svc.query_rows(db,'SELECT id,nom_mun AS nombre,cvegeo AS clave_inegi FROM INEGI_Cat_Municipios WHERE entidad_id=:eid ORDER BY nom_mun',{'eid':user['entidad_id']})
+    result['entidades']=svc.query_rows(db,'SELECT id,nom_ent AS nombre FROM INEGI_Cat_Entidades ORDER BY nom_ent',{})
     return result
+
+
+@router.get('/municipios-nacimiento')
+def birth_municipalities(entidad_id:int=Query(gt=0),user=Depends(current_user),db:Session=Depends(get_db)):
+    return {'items':svc.query_rows(db,'SELECT id,nom_mun AS nombre FROM INEGI_Cat_Municipios WHERE entidad_id=:eid ORDER BY nom_mun',{'eid':entidad_id})}
+
+
+@router.get('/personas')
+def people(tipo:Literal['beneficiario','solicitante'],q:str=Query('',max_length=150),
+    user=Depends(current_user),db:Session=Depends(get_db)):
+    if tipo=='beneficiario':
+        sql="""SELECT b.ben_id AS id, CONCAT(b.ben_gen_name,' ',b.ben_gen_lastname,' · #',b.ben_id) AS nombre
+          FROM Tbl_Beneficiarios b JOIN INEGI_Cat_Municipios m ON m.id=b.ben_dom_municipio AND m.entidad_id=b.ben_dom_entidad
+          WHERE b.is_active=1 AND b.ben_dom_entidad=:eid
+          AND (CONCAT(b.ben_gen_name,' ',b.ben_gen_lastname) LIKE :q OR b.ben_gen_curp=:exact)
+          ORDER BY b.ben_gen_name,b.ben_id LIMIT 30"""
+    else:
+        sql="""SELECT s.sol_id AS id, CONCAT(s.sol_nombres,' ',s.sol_apellidos,' · #',s.sol_id) AS nombre
+          FROM Tbl_Solicitantes s JOIN INEGI_Cat_Municipios m ON m.id=s.sol_municipioid AND m.entidad_id=s.sol_estadoid
+          WHERE s.is_active=1 AND s.sol_estadoid=:eid
+          AND CONCAT(s.sol_nombres,' ',s.sol_apellidos) LIKE :q ORDER BY s.sol_nombres,s.sol_id LIMIT 30"""
+    return {'items':svc.query_rows(db,sql,{'eid':user['entidad_id'],'q':'%'+q.strip()+'%','exact':q.strip()})}
 
 
 @router.get('/dashboard')
@@ -56,81 +76,27 @@ def requests(selected=Depends(svc.filters),page:int=Query(0,ge=0),user=Depends(c
 @router.get('/solicitudes/{sid}')
 def detail(sid:int,user=Depends(current_user),db:Session=Depends(get_db)):
     where,params=svc.where_clause(user,{})
-    rows=svc.query_rows(db,svc.ROW_SELECT+''', sa.descripcion,sa.observaciones,
-      b.nombres,b.apellidos,pr.nombre AS prioridad'''+svc.JOINS+
-      ' JOIN cat_prioridad pr ON pr.prioridad_id=sa.prioridad_id'+where+' AND sa.solicitud_id=:sid',{**params,'sid':sid})
+    rows=svc.query_rows(db,svc.ROW_SELECT+""", sa.solapoyo_descripcion AS descripcion,sa.solapoyo_observaciones AS observaciones,
+      b.ben_gen_name AS nombres,b.ben_gen_lastname AS apellidos,
+      c.descripcion AS canal,ut.descripcion AS unidad_tratante,o.descripcion AS origen,
+      CONCAT(s.sol_nombres,' ',s.sol_apellidos) AS solicitante"""+svc.JOINS+
+      ' JOIN Cat_CanalesRecepcion c ON c.id=sa.solapoyo_canalrecepcionid'
+      ' JOIN Cat_UnidadesTratantes ut ON ut.id=sa.solapoyo_unidadtratanteid'
+      ' JOIN Cat_EnviadoPor o ON o.id=sa.solapoyo_enviadoporid'
+      ' JOIN Tbl_Solicitantes s ON s.sol_id=sa.solapoyo_solicitanteid'
+      +where+' AND sa.solapoyo_id=:sid',{**params,'sid':sid})
     if not rows:
         raise HTTPException(404,'Solicitud no encontrada.')
     return rows[0]
 
 
-class NewRequest(BaseModel):
-    nombres:str=Field(min_length=1,max_length=150)
-    apellidos:str=Field(min_length=1,max_length=150)
-    municipio_id:int=Field(gt=0)
-    tipo_apoyo_id:int=Field(gt=0)
-    dependencia_id:int=Field(gt=0)
-    grupo_vulnerable_id:int|None=Field(None,gt=0)
-    descripcion:str=Field(min_length=1,max_length=5000)
-    idempotencia:uuid.UUID
-
-    @field_validator('nombres','apellidos','descripcion')
-    @classmethod
-    def strip_text(cls,value):
-        if not value.strip():
-            raise ValueError('Completa este campo.')
-        return value.strip()
-
-
-def existing_request(db,user,key):
-    return db.execute(text('''SELECT sa.solicitud_id,sa.folio FROM ejecutivo_registro er
-      JOIN solicitud_apoyo sa ON sa.solicitud_id=er.solicitud_id
-      WHERE er.usuario_id=:uid AND er.idempotencia=:key'''),{'uid':user['usuario_id'],'key':str(key)}).mappings().first()
-
-
 @router.post('/solicitudes',status_code=201)
 def create_request(data:NewRequest,user=Depends(current_user),db:Session=Depends(get_db)):
-    existing=existing_request(db,user,data.idempotencia)
-    if existing:
-        return dict(existing)
-    valid=db.execute(text('SELECT municipio_id FROM cat_municipio WHERE municipio_id=:id AND entidad_id=:eid AND activo=1'),
-      {'id':data.municipio_id,'eid':user['entidad_id']}).scalar()
-    if not valid:
-        raise HTTPException(422,'Selecciona un municipio de tu estado asignado.')
-    for table,pk,value in [('cat_tipo_apoyo','tipo_apoyo_id',data.tipo_apoyo_id),
-      ('cat_dependencia','dependencia_id',data.dependencia_id),('cat_grupo_vulnerable','grupo_vulnerable_id',data.grupo_vulnerable_id)]:
-        if value is not None and not db.execute(text(f'SELECT {pk} FROM {table} WHERE {pk}=:id AND activo=1'),{'id':value}).scalar():
-            raise HTTPException(422,'Una opción seleccionada ya no está disponible. Actualiza los catálogos.')
-    defaults={}
-    for key,table,pk,code in [('status','cat_estatus_solicitud','estatus_id','RECIBIDA'),
-      ('priority','cat_prioridad','prioridad_id','MEDIA'),('channel','cat_canal_recepcion','canal_recepcion_id','APP_EJECUTIVA')]:
-        defaults[key]=db.execute(text(f'SELECT {pk} FROM {table} WHERE clave=:code AND activo=1'),{'code':code}).scalar()
-    if not all(defaults.values()):
-        raise HTTPException(503,'Falta configurar los catálogos de recepción de solicitudes.')
-    try:
-        bid=db.execute(text('''INSERT INTO beneficiario (nombres,apellidos,municipio_domicilio_id,grupo_vulnerable_id)
-          VALUES (:nombres,:apellidos,:municipio_id,:grupo_vulnerable_id)'''),data.model_dump()).lastrowid
-        folio='SGSC-'+uuid.uuid4().hex[:24].upper()
-        sid=db.execute(text('''INSERT INTO solicitud_apoyo (folio,beneficiario_id,municipio_id,tipo_apoyo_id,
-          dependencia_id,descripcion,estatus_id,prioridad_id,canal_recepcion_id)
-          VALUES (:folio,:bid,:municipio_id,:tipo_apoyo_id,:dependencia_id,:descripcion,:status,:priority,:channel)'''),
-          {**data.model_dump(),**defaults,'folio':folio,'bid':bid}).lastrowid
-        db.execute(text('''INSERT INTO ejecutivo_registro (solicitud_id,usuario_id,idempotencia)
-          VALUES (:sid,:uid,:key)'''),{'sid':sid,'uid':user['usuario_id'],'key':str(data.idempotencia)})
-        db.execute(text('''INSERT INTO solicitud_estatus_historial (solicitud_id,estatus_id,usuario_id,comentario)
-          VALUES (:sid,:status,:uid,'Registro desde App Ejecutiva')'''),{'sid':sid,'status':defaults['status'],'uid':user['usuario_id']})
-        db.commit()
-        return {'solicitud_id':sid,'folio':folio}
-    except IntegrityError:
-        db.rollback()
-        existing=existing_request(db,user,data.idempotencia)
-        if existing:
-            return dict(existing)
-        raise HTTPException(409,'No fue posible registrar la solicitud. Actualiza los catálogos e intenta nuevamente.')
+    return save_ssnl_request(data,user,db)
 
 
-EXPORT_FIELDS=['folio','municipio','tipo_apoyo','dependencia','estatus','region','grupo_vulnerable']
-EXPORT_HEADERS=['Folio','Municipio','Tipo de apoyo','Dependencia','Estatus','Región','Grupo vulnerable']
+EXPORT_FIELDS=['folio','municipio','tipo_apoyo','dependencia','estatus','grupo_vulnerable','fecha_registro']
+EXPORT_HEADERS=['Solicitud','Municipio','Tipo de apoyo','Dependencia remitente','Estatus','Grupo vulnerable','Registro']
 
 
 @router.get('/exportar/{format}')
@@ -142,8 +108,8 @@ def export(format:Literal['xlsx','pdf'],selected=Depends(svc.filters),user=Depen
     summary=svc.dashboard(db,user,selected)
     metadata=f"{user['entidad']} · {datetime.now(timezone.utc):%Y-%m-%d %H:%M} UTC · {result['total']} solicitudes"
     cats=catalogs(user,db)
-    labels={'municipio_id':('Municipio','municipios'),'region_id':('Región','regiones'),
-      'tipo_apoyo_id':('Apoyo','apoyos'),'dependencia_id':('Dependencia','dependencias'),
+    labels={'municipio_id':('Municipio','municipios'),
+      'tipo_apoyo_id':('Apoyo','apoyos'),'dependencia_id':('Dependencia remitente','dependencias'),
       'grupo_vulnerable_id':('Grupo','grupos'),'estatus_id':('Estatus','estatus')}
     filter_parts=[]
     for key,value in selected.items():
@@ -177,7 +143,7 @@ def export(format:Literal['xlsx','pdf'],selected=Depends(svc.filters),user=Depen
         for column in 'ABCDEFG':
             sheet.column_dimensions[column].width=30
         trend=book.create_sheet('Tendencia')
-        trend.append(['Mes','Recibidas','Resueltas'])
+        trend.append(['Mes de registro','Registradas','Resueltas actualmente'])
         for item in summary['tendencia']:
             trend.append([item['mes'],item['recibidas'],item['resueltas']])
         book.save(stream)

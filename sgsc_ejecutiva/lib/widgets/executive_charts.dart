@@ -111,10 +111,10 @@ class _TrendChartState extends State<TrendChart> {
         const Row(
           children: [
             Icon(Icons.horizontal_rule, color: salud),
-            Text('Recibidas', style: TextStyle(fontSize: 11)),
+            Text('Registradas', style: TextStyle(fontSize: 11)),
             SizedBox(width: 18),
             Icon(Icons.horizontal_rule, color: brand),
-            Text('Resueltas', style: TextStyle(fontSize: 11)),
+            Text('Resueltas actualmente', style: TextStyle(fontSize: 11)),
           ],
         ),
         const SizedBox(height: 12),
@@ -137,7 +137,7 @@ class _TrendChartState extends State<TrendChart> {
         ),
         if (selected != null && selected! < points.length)
           Text(
-            '${points[selected!]['mes']} · ${points[selected!]['recibidas']} recibidas · ${points[selected!]['resueltas']} resueltas',
+            '${points[selected!]['mes']} · ${points[selected!]['recibidas']} registradas · ${points[selected!]['resueltas']} resueltas actualmente',
             style: const TextStyle(fontSize: 11),
           ),
       ],
@@ -288,18 +288,21 @@ class _RegionMapState extends State<RegionMap> {
           style: TextStyle(fontSize: 12, color: muted),
         ),
       ...widget.rows.map(
-        (r) => Material(color: Colors.transparent, child: ListTile(
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          selected: widget.active != null && widget.active == '${r['id']}',
-          leading: const Icon(Icons.square, color: brand, size: 12),
-          title: Text('${r['nombre']}', style: const TextStyle(fontSize: 12)),
-          trailing: Text(
-            '${r['total']}',
-            style: const TextStyle(fontWeight: FontWeight.w800),
+        (r) => Material(
+          color: Colors.transparent,
+          child: ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            selected: widget.active != null && widget.active == '${r['id']}',
+            leading: const Icon(Icons.square, color: brand, size: 12),
+            title: Text('${r['nombre']}', style: const TextStyle(fontSize: 12)),
+            trailing: Text(
+              '${r['total']}',
+              style: const TextStyle(fontWeight: FontWeight.w800),
+            ),
+            onTap: r['id'] == null ? null : () => widget.onSelect('${r['id']}'),
           ),
-          onTap: r['id'] == null ? null : () => widget.onSelect('${r['id']}'),
-        )),
+        ),
       ),
       const Text(
         'Mapa de referencia del diseño original. La clasificación visual es aproximada; los conteos corresponden al catálogo de la base de datos.',
