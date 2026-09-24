@@ -172,7 +172,7 @@ class _LoginScreenState extends State<LoginScreen> {
                           decoration: const InputDecoration(
                             hintText: 'correo@ejemplo.com',
                           ),
-                          maxLength: 180,
+                          maxLength: 150,
                           validator: (v) =>
                               RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$')
                                   .hasMatch(v?.trim() ?? '')

@@ -35,9 +35,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int page = 0, total = 0, generation = 0;
   static const filterDefinitions = [
     ['Municipio', 'municipio_id', 'municipios'],
-    ['Región', 'region_id', 'regiones'],
     ['Tipo de apoyo', 'tipo_apoyo_id', 'apoyos'],
-    ['Dependencia', 'dependencia_id', 'dependencias'],
+    ['Dependencia remitente', 'dependencia_id', 'dependencias'],
     ['Grupo vulnerable', 'grupo_vulnerable_id', 'grupos'],
     ['Estatus', 'estatus_id', 'estatus'],
   ];
@@ -260,7 +259,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           context: context,
                           firstDate: DateTime(2000),
                           lastDate: DateTime.now(),
-                          helpText: 'Fechas de recepción',
+                          helpText: 'Fechas de registro',
                           saveText: 'Aplicar',
                         );
                         if (range != null) {
@@ -361,12 +360,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
                 ...{
                   'Municipio': 'municipio',
                   'Tipo de apoyo': 'tipo_apoyo',
-                  'Dependencia': 'dependencia',
-                  'Región': 'region',
+                  'Dependencia remitente': 'dependencia',
                   'Grupo vulnerable': 'grupo_vulnerable',
-                  'Prioridad': 'prioridad',
-                  'Recibida': 'fecha_recepcion',
-                  'Cierre': 'fecha_cierre',
+                  'Registrada': 'fecha_registro',
+                  'Canal': 'canal',
+                  'Unidad tratante': 'unidad_tratante',
+                  'Origen': 'origen',
+                  'Solicitante': 'solicitante',
                 }.entries.map(
                   (e) => Padding(
                     padding: const EdgeInsets.only(bottom: 10),
@@ -413,7 +413,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         onSaved: (folio) {
           setState(() {
             screen = 'dashboard';
-            message = 'Solicitud registrada. Folio: $folio';
+            message = '$folio registrada correctamente';
             filters.clear();
             page = 0;
           });
@@ -597,8 +597,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                   ExecutiveCard(
-                    title: 'Solicitudes recibidas vs. resueltas',
-                    source: 'Últimos 12 meses. Recibidas por fecha de recepción y resueltas por fecha de cierre, usando los estatus de la base de datos. El periodo del filtro delimita la fecha de recepción de las solicitudes.',
+                    title: 'Solicitudes por mes de registro',
+                    source: 'Últimos 12 meses. Solicitudes registradas en cada mes y cuántas están resueltas actualmente. No indica el mes en que se resolvieron.',
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -607,23 +607,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ],
                     ),
                   ),
-                  if ('${widget.user['clave_inegi']}' == '19')
-                    ExecutiveCard(
-                      title: 'Solicitudes realizadas',
-                      source: 'Conteos por región del municipio de la solicitud, o del domicilio del beneficiario cuando no se especifica municipio. Los registros sin región se conservan como Sin información.',
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          heading('REGIÓN · TOCA PARA FILTRAR'),
-                          RegionMap(
-                            rows: group('regiones'),
-                            active: filters['region_id'],
-                            onSelect: (v) =>
-                                filter('region_id', v, toggle: true),
-                          ),
-                        ],
-                      ),
-                    ),
                   bars(
                     'Solicitudes por municipio',
                     'municipios',
@@ -643,8 +626,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     'Solicitudes agrupadas por el grupo del beneficiario. Un beneficiario puede tener varias solicitudes.',
                   ),
                   ExecutiveCard(
-                    title: 'Resumen por dependencia',
-                    source: 'Porcentaje de las solicitudes filtradas que corresponde a cada dependencia.',
+                    title: 'Dependencias remitentes',
+                    source: 'Porcentaje de las solicitudes filtradas que fue remitido por cada dependencia.',
                     child: group('dependencias').isEmpty
                         ? const Text(
                             'Sin datos por dependencia.',
@@ -717,10 +700,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                   ),
                                   columns:
                                       [
-                                            'Folio',
+                                            'Solicitud',
                                             'Municipio',
                                             'Tipo de apoyo',
-                                            'Dependencia',
+                                            'Remitente',
                                             'Estatus',
                                           ]
                                           .map(

@@ -12,11 +12,11 @@ Copy-Item .env.example .env
 .\.venv\Scripts\python.exe -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Antes de migrar, completar `.env`: host, puerto, usuario y contraseña de Aiven, DB_NAME=sgsc_salud, DB_SSL=true y DB_SSL_CA con la ruta de ca.pem. La conexión valida el certificado y nombre de servidor. No ejecutar `sgsc_salud_desde_cero.sql` sobre una base con datos: contiene DROP DATABASE. La migración nueva es aditiva.
+Antes de migrar, completar `.env`: host, puerto, usuario y contraseña de Aiven, DB_NAME=siesas-v2, DB_SSL=true y DB_SSL_CA con la ruta de ca.pem. La conexión valida el certificado y nombre de servidor. No ejecutar `sgsc_salud_desde_cero.sql` sobre una base con datos: contiene DROP DATABASE. La migración nueva es aditiva.
 
 ## Administración local
 
-- `python manage.py seed-wireframe`: carga los tipos de apoyo y dependencias del prototipo sin reemplazar filas existentes.
+- SSNL conserva sus catálogos originales. `seed-wireframe` está deshabilitado para esta base.
 - `python manage.py create-user --correo persona@dominio.mx --nombres Nombre --apellidos Apellido --entidad 19`: autoriza la solicitud de acceso pendiente o pide una contraseña por entrada oculta. No modifica una cuenta existente.
 - `python manage.py setup-2fa --correo persona@dominio.mx`: vincula un autenticador y exige un código válido antes de activarlo. Requiere AUTH_ENCRYPTION_KEY; conservar esta clave entre reinicios.
 
@@ -32,9 +32,9 @@ Autenticación: POST /auth/login, /auth/verify, /auth/logout, /auth/request-acce
 
 Datos: GET /ejecutivo/catalogos, /ejecutivo/dashboard; GET y POST /ejecutivo/solicitudes; GET /ejecutivo/solicitudes/{id}; GET /ejecutivo/exportar/xlsx y /ejecutivo/exportar/pdf.
 
-Datos y perfil requieren Authorization: Bearer. Cada consulta verifica cuenta activa, rol EJECUTIVO y entidad asignada. Los routers antiguos permanecen como referencia pero no se publican porque no aplicaban este control.
+Datos y perfil requieren Authorization: Bearer. Cada consulta verifica cuenta activa, rol Ejecutivo en `auth_assignment` y entidad asignada. Los routers antiguos permanecen como referencia pero no se publican porque no aplicaban este control.
 
-Filtros compartidos: municipio_id, region_id, tipo_apoyo_id, dependencia_id, grupo_vulnerable_id, estatus_id, fecha_inicio, fecha_fin. Lista: page desde cero, 10 filas por página. Exportación: hasta 10,000 solicitudes, con filtros incluidos. Excel trata valores como texto para evitar fórmulas inyectadas.
+Filtros compartidos: municipio_id, tipo_apoyo_id, dependencia_id, grupo_vulnerable_id, estatus_id, fecha_inicio, fecha_fin. Lista: page desde cero, 10 filas por página. Exportación: hasta 10,000 solicitudes, con filtros incluidos. Excel trata valores como texto para evitar fórmulas inyectadas.
 
 ## Pruebas
 
@@ -47,3 +47,33 @@ $env:RUN_DB_TESTS='1'
 Las pruebas de MySQL usan una transacción exterior con savepoints y revierten sus filas temporales. Requieren la migración y los catálogos. No ejecutarlas simultáneamente desde el mismo proceso.
 
 La importación original tenía 26 campos de catálogo mal codificados. Se corrigieron sin cambiar claves ni relaciones. Respaldo reversible: catalog_encoding_backup.local.json, excluido de Git.
+
+
+## SSNL v2 — 21 de septiembre de 2026
+
+La base activa es `siesas-v2`, importada de `SSNL-original.sql`. Sus 31 tablas originales conservan estructura y nombres exactos. Las cinco tablas auxiliares de `migrations/002_ssnl_ejecutivo.sql` sostienen sesiones, tokens, solicitudes de acceso, límites e idempotencia. No hay vistas que simulen la base anterior.
+
+Primero se importa el SQL en una base vacía; después `manage.py migrate` agrega únicamente el soporte ejecutivo. La migración `001_ejecutivo.sql` corresponde al esquema anterior y no debe ejecutarse en SSNL. Los scripts antiguos de demostración también son exclusivos de `sgsc_salud`.
+
+La cuenta inicial se conserva con su hash actual. FastAPI verifica Argon2 y bcrypt de Yii/PHP; los cambios de contraseña nuevos usan Argon2. La migración general de usuarios de David sigue pendiente y deberá preservar cuenta, correo, hash y asignaciones; no sustituir la tabla sin revisar esas relaciones. Las sesiones antiguas no se copian.
+
+### Reglas de consulta
+
+- Municipio: domicilio del beneficiario, con entidad y municipio coherentes. La autorización por entidad permanece obligatoria.
+- Identificación: “Solicitud #ID”, calculada a partir de la clave; no se inventa un folio de negocio.
+- Periodos y gráficas: `Tbl_SolicitudesApoyo.created`. Las resueltas se cuentan por su estatus actual dentro de cada cohorte de registro, no por una fecha de cierre inexistente.
+- Resueltas: `Resuelto` y `Resuelto con observación`. Activas: excluye esas dos, `Cerrado / Cancelado` y `No es competencia`.
+- Dependencia: remitente; unidad tratante se muestra por separado.
+- Se retiraron filtros/regiones, prioridad por solicitud y fecha de cierre, que no están relacionados o almacenados en el original.
+
+### Registro
+
+Tres pasos: beneficiario, solicitante y solicitud. Se puede buscar una persona existente por nombre (o CURP del beneficiario), siempre dentro del estado autorizado, o capturar todos los campos obligatorios. Alta transaccional e idempotente: un fallo no deja personas huérfanas; un reintento no duplica solicitudes.
+
+El backend asigna `Inicio`, autores y fechas. No agrega valores ficticios para datos personales. `ben_dom_colonia` es un entero obligatorio sin catálogo en el SQL recibido: se pide la clave numérica del expediente. Hace falta confirmar su catálogo o recibir la corrección de ese campo en una migración posterior.
+
+Los expedientes de demostración incluidos en el SQL original se conservaron. Los que tienen municipio y entidad incompatibles no se ofrecen en los selectores ni se cuentan dentro del estado; se deben corregir en origen con información verificada.
+
+### Retorno
+
+La base `sgsc_salud` permanece intacta. Para volver también hay que restaurar el código previo y su configuración: el backend actual consulta las tablas SSNL directamente. Se guardó un respaldo privado completo de la base anterior y una copia privada del código/configuración antes del cambio. No publicar esos respaldos: contienen datos y secretos locales.

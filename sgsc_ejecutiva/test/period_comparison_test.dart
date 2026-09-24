@@ -60,7 +60,7 @@ void main() {
       expect(query!['municipio_id'], '3');
       expect(query!.containsKey('fecha_inicio'), false);
       expect(find.byType(DataTable), findsNothing);
-      expect(find.text('Solicitudes recibidas'), findsOneWidget);
+      expect(find.text('Solicitudes registradas'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await screenshot(tester, 'comparacion-mobile');
       final original = query!['b_inicio'];

@@ -107,7 +107,8 @@ Future<void> prepare(WidgetTester tester) async {
   final loader = FontLoader('Mulish')
     ..addFont(rootBundle.load('assets/fonts/Mulish.ttf'));
   await tester.runAsync(() => loader.load());
-  final icons = FontLoader('MaterialIcons')..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
+  final icons = FontLoader('MaterialIcons')
+    ..addFont(rootBundle.load('fonts/MaterialIcons-Regular.otf'));
   await tester.runAsync(() => icons.load());
 }
 
@@ -118,7 +119,9 @@ Future<void> screenshot(WidgetTester tester, String name) async {
     find.byKey(const ValueKey('capture')),
   );
   final image = await tester.runAsync(() => boundary.toImage(pixelRatio: 1));
-  final bytes = await tester.runAsync(() => image!.toByteData(format: ui.ImageByteFormat.png));
+  final bytes = await tester.runAsync(
+    () => image!.toByteData(format: ui.ImageByteFormat.png),
+  );
   await tester.runAsync(() async {
     await Directory(directory).create(recursive: true);
     await File('$directory/$name.png')
@@ -194,37 +197,34 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Aún no hay solicitudes'), findsOneWidget);
   });
-  testWidgets(
-    'Missing catalogs disable saving and optional groups stay empty',
-    (tester) async {
-      await prepare(tester);
-      await tester.pumpWidget(
-        MaterialApp(
-          theme: executiveTheme(),
-          home: Scaffold(
-            body: NewRequestScreen(
-              api: mockApi(),
-              catalogs: const {},
-              entity: 'Nuevo León',
-              onBack: () {},
-              onSaved: (_) {},
-            ),
+  testWidgets('Missing required SSNL catalogs disable continuing', (
+    tester,
+  ) async {
+    await prepare(tester);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: executiveTheme(),
+        home: Scaffold(
+          body: NewRequestScreen(
+            api: mockApi(),
+            catalogs: const {},
+            entity: 'Nuevo León',
+            onBack: () {},
+            onSaved: (_) {},
           ),
         ),
-      );
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(find.widgetWithText(FilledButton, 'Registrar solicitud'));
-      expect(
-        tester
-            .widget<FilledButton>(
-              find.widgetWithText(FilledButton, 'Registrar solicitud'),
-            )
-            .onPressed,
-        isNull,
-      );
-      expect(tester.takeException(), isNull);
-    },
-  );
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.ensureVisible(find.widgetWithText(FilledButton, 'Continuar'));
+    expect(
+      tester
+          .widget<FilledButton>(find.widgetWithText(FilledButton, 'Continuar'))
+          .onPressed,
+      isNull,
+    );
+    expect(tester.takeException(), isNull);
+  });
   testWidgets('Populated dashboard draws the charts', (tester) async {
     await prepare(tester);
     await tester.pumpWidget(wrap(dashboard(mockApi(populated: true))));
@@ -232,13 +232,11 @@ void main() {
     expect(find.text('36'), findsWidgets);
     await screenshot(tester, '05-panel-con-datos-prueba');
     await tester.scrollUntilVisible(
-      find.text(
-        'Mapa de referencia del diseño original. La clasificación visual es aproximada; los conteos corresponden al catálogo de la base de datos.',
-      ),
+      find.text('Solicitudes por municipio'),
       300,
     );
     await tester.pumpAndSettle();
     expect(tester.takeException(), isNull);
-    await screenshot(tester, '06-mapa');
+    await screenshot(tester, '06-municipios');
   });
 }

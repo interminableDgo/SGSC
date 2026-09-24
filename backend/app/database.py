@@ -11,7 +11,7 @@ load_dotenv(Path(__file__).resolve().parents[1] / '.env')
 
 DB_HOST = os.getenv("DB_HOST", "127.0.0.1")
 DB_PORT = int(os.getenv("DB_PORT", "3306"))
-DB_NAME = os.getenv("DB_NAME", "sgsc_salud")
+DB_NAME = os.getenv("DB_NAME", "siesas-v2")
 DB_USER = os.getenv("DB_USER", "root")
 DB_PASSWORD = os.getenv("DB_PASSWORD", "")
 
@@ -32,6 +32,7 @@ if os.getenv("DB_SSL", "false").lower() == "true":
 engine = create_engine(
     DATABASE_URL,
     pool_pre_ping=True,
+    hide_parameters=True,
     pool_recycle=280,
     pool_size=5,
     max_overflow=10,

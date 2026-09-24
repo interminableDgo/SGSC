@@ -1,3 +1,4 @@
+import bcrypt
 import hashlib
 import os
 import secrets
@@ -29,8 +30,11 @@ def now():
 
 def verify_password(encoded, password):
     try:
+        if encoded and encoded.startswith(('$2a$', '$2b$', '$2y$')):
+            # PHP bcrypt uses at most 72 bytes; new passwords continue using Argon2.
+            return bcrypt.checkpw(password.encode('utf-8')[:72], encoded.encode('ascii'))
         return hasher.verify(encoded or dummy_hash, password)
-    except (InvalidHashError, VerificationError):
+    except (InvalidHashError, VerificationError, ValueError):
         return False
 
 
@@ -75,23 +79,23 @@ def lock_token(db, raw, kind):
     uid = db.execute(text('SELECT usuario_id FROM ejecutivo_token WHERE token_hash=:key'), {'key': key}).scalar()
     if uid is None:
         return None
-    db.execute(text('SELECT usuario_id FROM usuario WHERE usuario_id=:uid FOR UPDATE'), {'uid': uid})
+    db.execute(text('SELECT us_id FROM Tbl_Users WHERE us_id=:uid FOR UPDATE'), {'uid': uid})
     return db.execute(text('''SELECT * FROM ejecutivo_token WHERE token_hash=:key
       AND tipo=:kind AND usado IS NULL AND expira>:now FOR UPDATE'''),
       {'key': key, 'kind': kind, 'now': now()}).mappings().first()
 
 
-USER_SQL = '''SELECT u.usuario_id, u.nombres, u.apellidos, u.correo,
- a.entidad_id, e.nombre AS entidad, e.clave_inegi, a.totp_secret, a.totp_last_step
- FROM usuario u JOIN ejecutivo_acceso a ON a.usuario_id=u.usuario_id
- JOIN cat_entidad_federativa e ON e.entidad_id=a.entidad_id
- WHERE u.activo=1 AND e.activo=1 AND EXISTS (
- SELECT 1 FROM usuario_rol ur JOIN cat_rol r ON r.rol_id=ur.rol_id
- WHERE ur.usuario_id=u.usuario_id AND r.clave='EJECUTIVO' AND r.activo=1)'''
+USER_SQL = """SELECT u.us_id AS usuario_id, u.us_name AS nombres, u.us_lastname AS apellidos, u.us_email AS correo,
+ a.entidad_id, e.nom_ent AS entidad, e.cve_ent AS clave_inegi, a.totp_secret, a.totp_last_step
+ FROM Tbl_Users u JOIN ejecutivo_acceso a ON a.usuario_id=u.us_id
+ JOIN INEGI_Cat_Entidades e ON e.id=a.entidad_id
+ WHERE u.is_active=1 AND EXISTS (
+ SELECT 1 FROM auth_assignment aa JOIN auth_item ai ON ai.name=aa.item_name
+ WHERE aa.user_id=CAST(u.us_id AS CHAR) AND ai.name='Ejecutivo' AND ai.type=1)"""
 
 
 def authorized_user(db, uid):
-    return db.execute(text(USER_SQL + ' AND u.usuario_id=:uid'), {'uid': uid}).mappings().first()
+    return db.execute(text(USER_SQL + ' AND u.us_id=:uid'), {'uid': uid}).mappings().first()
 
 
 def public_user(user):
