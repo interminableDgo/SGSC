@@ -844,6 +844,8 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                               horizontal: 5,
                                             ),
                                             child: Row(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.start,
                                               children: [
                                                 Expanded(
                                                   child: Text(
@@ -853,11 +855,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                                     ),
                                                   ),
                                                 ),
-                                                Text(
-                                                  '${r['total']}  ·  ${hasData ? ((r['total'] as num) / (summary!['total'] as num) * 100).toStringAsFixed(1) : '0'}%',
-                                                  style: const TextStyle(
-                                                    fontSize: 12,
-                                                    fontWeight: FontWeight.w800,
+                                                const SizedBox(width: 12),
+                                                SizedBox(
+                                                  width: 100,
+                                                  child: Text(
+                                                    '${r['total']}  ·  ${hasData ? ((r['total'] as num) / (summary!['total'] as num) * 100).toStringAsFixed(1) : '0'}%',
+                                                    textAlign: TextAlign.right,
+                                                    style: const TextStyle(
+                                                      fontSize: 12,
+                                                      fontWeight:
+                                                          FontWeight.w800,
+                                                    ),
                                                   ),
                                                 ),
                                               ],
